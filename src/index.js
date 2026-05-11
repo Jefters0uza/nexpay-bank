@@ -17,13 +17,148 @@ app.use(express.json());
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-startCommand(bot);
+const usersDatabase = {};
+const pendingPayments = {};
+
+startCommand(bot, usersDatabase, pendingPayments);
 
 app.get('/', (req, res) => {
+
     res.json({
         status: true,
         message: 'NexPay API ONLINE'
     });
+
+});
+
+app.post('/webhook/pushinpay', async (req, res) => {
+
+    try {
+
+        const paymentData = req.body;
+
+        console.log('💰 WEBHOOK RECEBIDO');
+        console.log(paymentData);
+
+        if (
+            !paymentData ||
+            !paymentData.id
+        ) {
+
+            return res.status(400).json({
+                error: true
+            });
+
+        }
+
+        const payment = pendingPayments[paymentData.id];
+
+        if (!payment) {
+
+            return res.status(200).json({
+                received: true
+            });
+
+        }
+
+        if (payment.status === 'paid') {
+
+            return res.status(200).json({
+                received: true
+            });
+
+        }
+
+        if (
+            paymentData.status === 'paid'
+        ) {
+
+            payment.status = 'paid';
+
+            const user = usersDatabase[payment.userId];
+
+            if (user) {
+
+                user.balance += payment.amount;
+                user.deposited += payment.amount;
+
+            }
+
+            try {
+
+                await bot.telegram.sendMessage(
+                    payment.userId,
+`✅ <b>DEPÓSITO CONFIRMADO</b>
+
+━━━━━━━━━━━━━━━
+
+💰 Valor:
+R$ ${payment.amount.toFixed(2)}
+
+━━━━━━━━━━━━━━━
+
+⚡ O valor já está disponível
+em sua carteira.`,
+                    {
+                        parse_mode: 'HTML'
+                    }
+                );
+
+            } catch (error) {
+
+                console.log('❌ ERRO AO ENVIAR MSG USUÁRIO');
+
+            }
+
+            try {
+
+                await bot.telegram.sendMessage(
+                    process.env.ADMIN_TELEGRAM_ID,
+`💸 <b>NOVO DEPÓSITO PAGO</b>
+
+━━━━━━━━━━━━━━━
+
+👤 Usuário:
+${payment.firstName}
+
+🆔 ID:
+<code>${payment.userId}</code>
+
+💰 Valor:
+R$ ${payment.amount.toFixed(2)}
+
+━━━━━━━━━━━━━━━
+
+✅ STATUS:
+PAGO`,
+                    {
+                        parse_mode: 'HTML'
+                    }
+                );
+
+            } catch (error) {
+
+                console.log('❌ ERRO AO NOTIFICAR ADMIN');
+
+            }
+
+        }
+
+        return res.status(200).json({
+            success: true
+        });
+
+    } catch (error) {
+
+        console.log('❌ ERRO WEBHOOK');
+        console.log(error);
+
+        return res.status(500).json({
+            error: true
+        });
+
+    }
+
 });
 
 const PORT = process.env.PORT || 3000;
@@ -43,7 +178,9 @@ async function startServer() {
         console.log('🤖 Bot NexPay ONLINE');
 
         app.listen(PORT, () => {
+
             console.log(`🚀 Servidor rodando na porta ${PORT}`);
+
         });
 
     } catch (error) {
@@ -58,9 +195,13 @@ async function startServer() {
 startServer();
 
 process.once('SIGINT', () => {
+
     bot.stop('SIGINT');
+
 });
 
 process.once('SIGTERM', () => {
+
     bot.stop('SIGTERM');
+
 });
