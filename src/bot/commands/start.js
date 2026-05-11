@@ -4,15 +4,25 @@ const QRCode = require('qrcode');
 const {
     mainMenu,
     backMenu,
-    walletMenu,
-    affiliateMenu
+    walletMenu
 } = require('../menus/mainMenu');
 
 const {
     createPixDeposit
 } = require('../../services/pushinPay');
 
-const userStates = {};
+const {
+    userStates
+} = require('../../states/userStates');
+
+const {
+    getUser
+} = require('../../database/users');
+
+const {
+    clearTemporaryMessage,
+    isOperationalTime
+} = require('../../utils/helpers');
 
 const RULES = {
     deposit: {
@@ -21,48 +31,8 @@ const RULES = {
     },
 
     withdraw: {
-        minimum: 25,
-        fee: 0
-    },
-
-    support: {
-        startHour: 10,
-        endHour: 20
+        minimum: 25
     }
-};
-
-const isOperationalTime = () => {
-
-    const currentHour = new Date().getHours();
-
-    return (
-        currentHour >= RULES.support.startHour &&
-        currentHour < RULES.support.endHour
-    );
-
-};
-
-const clearTemporaryMessage = async (ctx) => {
-
-    try {
-
-        const state = userStates[ctx.from.id];
-
-        if (!state) return;
-
-        if (!state.messageId) return;
-
-        await ctx.telegram.deleteMessage(
-            ctx.chat.id,
-            state.messageId
-        );
-
-        delete userStates[ctx.from.id].messageId;
-
-    } catch (error) {
-
-    }
-
 };
 
 module.exports = (
@@ -71,31 +41,12 @@ module.exports = (
     pendingPayments
 ) => {
 
-    const getUser = (userId) => {
-
-        if (!usersDatabase[userId]) {
-
-            usersDatabase[userId] = {
-                balance: 0,
-                deposited: 0,
-                withdrawed: 0,
-                pixData: null,
-                createdAt: new Date().toLocaleString('pt-BR')
-            };
-
-        }
-
-        return usersDatabase[userId];
-
-    };
-
     const getHomeCaption = (ctx) => {
 
         const user = getUser(ctx.from.id);
 
-        const currentDate = new Date();
-
-        const formattedDate = currentDate.toLocaleString('pt-BR');
+        const formattedDate =
+            new Date().toLocaleString('pt-BR');
 
         return `🏦 <b>BEM-VINDO À NEXPAY BANK</b>
 
@@ -130,7 +81,10 @@ R$ ${user.balance.toFixed(2)}`;
 
             await ctx.replyWithPhoto(
                 {
-                    source: path.resolve(__dirname, '../../assets/logo.jpeg')
+                    source: path.resolve(
+                        __dirname,
+                        '../../assets/logo.jpeg'
+                    )
                 },
                 {
                     caption: getHomeCaption(ctx),
@@ -141,7 +95,8 @@ R$ ${user.balance.toFixed(2)}`;
 
         } catch (error) {
 
-            console.log('❌ ERRO NO START:', error);
+            console.log('❌ ERRO START');
+            console.log(error);
 
         }
 
@@ -153,7 +108,10 @@ R$ ${user.balance.toFixed(2)}`;
 
             await ctx.answerCbQuery();
 
-            await clearTemporaryMessage(ctx);
+            await clearTemporaryMessage(
+                ctx,
+                userStates
+            );
 
             userStates[ctx.from.id] = {
                 action: 'waiting_deposit_amount'
@@ -164,29 +122,34 @@ R$ ${user.balance.toFixed(2)}`;
 
 ━━━━━━━━━━━━━━━
 
-📌 <b>REGRAS</b>
+📌 REGRAS
 
-• Mínimo: R$ ${RULES.deposit.minimum.toFixed(2)}
-• Máximo: R$ ${RULES.deposit.maximum.toFixed(2)}
+• Mínimo: R$ 20
+• Máximo: R$ 1500
 
 ━━━━━━━━━━━━━━━
 
-⚡ Digite o valor do depósito.`,
+💰 Digite o valor do depósito.`,
                 {
                     parse_mode: 'HTML',
                     ...backMenu()
                 }
             );
 
-            const askMessage = await ctx.reply(
-                `💰 Digite o valor do depósito.`,
-            );
+            const askMessage =
+                await ctx.reply(
+                    `💰 Envie o valor do depósito.`
+                );
 
-            userStates[ctx.from.id].messageId = askMessage.message_id;
+            userStates[
+                ctx.from.id
+            ].messageId =
+                askMessage.message_id;
 
         } catch (error) {
 
-            console.log('❌ ERRO NO DEPÓSITO:', error);
+            console.log('❌ ERRO DEPOSIT');
+            console.log(error);
 
         }
 
@@ -196,77 +159,86 @@ R$ ${user.balance.toFixed(2)}`;
 
         try {
 
-            const userState = userStates[ctx.from.id];
+            const userState =
+                userStates[ctx.from.id];
 
             if (!userState) return;
 
             if (
-                userState.action ===
+                userState.action !==
                 'waiting_deposit_amount'
+            ) return;
+
+            await clearTemporaryMessage(
+                ctx,
+                userStates
+            );
+
+            const value = Number(
+                ctx.message.text
+                    .replace(',', '.')
+                    .replace('R$', '')
+                    .trim()
+            );
+
+            if (
+                isNaN(value) ||
+                value < RULES.deposit.minimum ||
+                value > RULES.deposit.maximum
             ) {
 
-                await clearTemporaryMessage(ctx);
-
-                const value = Number(
-                    ctx.message.text
-                        .replace(',', '.')
-                        .replace('R$', '')
-                        .trim()
-                );
-
-                if (
-                    isNaN(value) ||
-                    value < RULES.deposit.minimum ||
-                    value > RULES.deposit.maximum
-                ) {
-
-                    const askMessage = await ctx.reply(
-                        `❌ Valor inválido.\n\nDigite um valor entre R$ ${RULES.deposit.minimum} e R$ ${RULES.deposit.maximum}.`
+                const askMessage =
+                    await ctx.reply(
+                        `❌ Valor inválido.\n\nDigite entre R$ ${RULES.deposit.minimum} e R$ ${RULES.deposit.maximum}.`
                     );
 
-                    userStates[ctx.from.id].messageId =
-                        askMessage.message_id;
+                userStates[
+                    ctx.from.id
+                ].messageId =
+                    askMessage.message_id;
 
-                    return;
+                return;
 
-                }
+            }
 
-                const webhookUrl =
-`https://tecofertamax.shop/webhook/pushinpay`;
+            const webhookUrl =
+                'https://tecofertamax.shop/webhook/pushinpay';
 
-                const payment = await createPixDeposit(
+            const payment =
+                await createPixDeposit(
                     value,
                     webhookUrl
                 );
 
-                if (!payment) {
+            if (!payment) {
 
-                    await ctx.reply(
-                        `❌ Erro ao gerar PIX.`
-                    );
+                await ctx.reply(
+                    '❌ Erro ao gerar PIX.'
+                );
 
-                    return;
+                return;
 
-                }
+            }
 
-                pendingPayments[payment.id] = {
-                    id: payment.id,
-                    amount: value,
-                    userId: ctx.from.id,
-                    firstName: ctx.from.first_name,
-                    status: 'pending'
-                };
+            pendingPayments[payment.id] = {
+                id: payment.id,
+                amount: value,
+                userId: ctx.from.id,
+                firstName: ctx.from.first_name,
+                status: 'pending'
+            };
 
-                const qrCodeImage = await QRCode.toBuffer(
+            const qrCodeImage =
+                await QRCode.toBuffer(
                     payment.qr_code
                 );
 
-                await ctx.replyWithPhoto(
-                    {
-                        source: qrCodeImage
-                    },
-                    {
-                        caption:
+            await ctx.replyWithPhoto(
+                {
+                    source: qrCodeImage
+                },
+                {
+                    caption:
 `💳 <b>PAGAMENTO PIX GERADO</b>
 
 ━━━━━━━━━━━━━━━
@@ -276,25 +248,25 @@ R$ ${value.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-📋 <b>PIX COPIA E COLA</b>
+📋 PIX COPIA E COLA
 
 <code>${payment.qr_code}</code>
 
 ━━━━━━━━━━━━━━━
 
 ⚠️ O saldo será liberado
-somente após o pagamento REAL.
+somente após pagamento REAL.
 
 ━━━━━━━━━━━━━━━
 
 🕒 Aguardando pagamento...`,
-                        parse_mode: 'HTML',
-                        ...backMenu()
-                    }
-                );
+                    parse_mode: 'HTML',
+                    ...backMenu()
+                }
+            );
 
-                await bot.telegram.sendMessage(
-                    process.env.ADMIN_TELEGRAM_ID,
+            await bot.telegram.sendMessage(
+                process.env.ADMIN_TELEGRAM_ID,
 `💰 <b>NOVO PIX GERADO</b>
 
 ━━━━━━━━━━━━━━━
@@ -315,20 +287,17 @@ R$ ${value.toFixed(2)}
 
 ⏳ STATUS:
 AGUARDANDO PAGAMENTO`,
-                    {
-                        parse_mode: 'HTML'
-                    }
-                );
+                {
+                    parse_mode: 'HTML'
+                }
+            );
 
-                delete userStates[ctx.from.id];
-
-                return;
-
-            }
+            delete userStates[ctx.from.id];
 
         } catch (error) {
 
-            console.log('❌ ERRO AO RECEBER TEXTO:', error);
+            console.log('❌ ERRO TEXT');
+            console.log(error);
 
         }
 
@@ -340,7 +309,10 @@ AGUARDANDO PAGAMENTO`,
 
             await ctx.answerCbQuery();
 
-            await clearTemporaryMessage(ctx);
+            await clearTemporaryMessage(
+                ctx,
+                userStates
+            );
 
             const user = getUser(ctx.from.id);
 
@@ -354,12 +326,12 @@ AGUARDANDO PAGAMENTO`,
 
 ━━━━━━━━━━━━━━━
 
-Saque mínimo:
+💸 Mínimo saque:
 R$ ${RULES.withdraw.minimum.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-Saldo atual:
+💰 Saldo:
 R$ ${user.balance.toFixed(2)}`,
                     {
                         parse_mode: 'HTML',
@@ -374,13 +346,13 @@ R$ ${user.balance.toFixed(2)}`,
 
 ━━━━━━━━━━━━━━━
 
-💰 Valor disponível:
+💰 Valor:
 R$ ${user.balance.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-⏳ Seu saque entrou
-em análise manual.`,
+⏳ Saque enviado
+para análise manual.`,
                 {
                     parse_mode: 'HTML',
                     ...backMenu()
@@ -404,7 +376,7 @@ R$ ${user.balance.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-⚠️ Aguardando aprovação manual.`,
+⚠️ Aguardando análise.`,
                 {
                     parse_mode: 'HTML'
                 }
@@ -412,7 +384,8 @@ R$ ${user.balance.toFixed(2)}
 
         } catch (error) {
 
-            console.log('❌ ERRO NO SAQUE:', error);
+            console.log('❌ ERRO WITHDRAW');
+            console.log(error);
 
         }
 
@@ -424,20 +397,20 @@ R$ ${user.balance.toFixed(2)}
 
             await ctx.answerCbQuery();
 
-            await clearTemporaryMessage(ctx);
+            await clearTemporaryMessage(
+                ctx,
+                userStates
+            );
 
             const user = getUser(ctx.from.id);
-
-            const firstName =
-                ctx.from.first_name || 'Usuário';
 
             await ctx.editMessageCaption(
 `💼 <b>CARTEIRA DIGITAL</b>
 
 ━━━━━━━━━━━━━━━
 
-👤 Titular:
-${firstName}
+👤 Usuário:
+${ctx.from.first_name}
 
 🆔 ID:
 <code>${ctx.from.id}</code>
@@ -455,7 +428,7 @@ R$ ${user.withdrawed.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-📅 Conta criada:
+📅 Criada em:
 ${user.createdAt}`,
                 {
                     parse_mode: 'HTML',
@@ -465,7 +438,8 @@ ${user.createdAt}`,
 
         } catch (error) {
 
-            console.log('❌ ERRO NA CARTEIRA:', error);
+            console.log('❌ ERRO WALLET');
+            console.log(error);
 
         }
 
@@ -477,18 +451,21 @@ ${user.createdAt}`,
 
             await ctx.answerCbQuery();
 
-            await clearTemporaryMessage(ctx);
+            await clearTemporaryMessage(
+                ctx,
+                userStates
+            );
 
             const supportOnline =
                 isOperationalTime();
 
             const supportStatus =
                 supportOnline
-                    ? '🟢 SUPORTE ONLINE'
-                    : '🟡 SUPORTE OFFLINE';
+                    ? '🟢 ONLINE'
+                    : '🟡 OFFLINE';
 
             await ctx.editMessageCaption(
-`🎧 <b>CENTRAL DE SUPORTE</b>
+`🎧 <b>SUPORTE</b>
 
 ━━━━━━━━━━━━━━━
 
@@ -504,7 +481,8 @@ ${supportStatus}
 
         } catch (error) {
 
-            console.log('❌ ERRO NO SUPORTE:', error);
+            console.log('❌ ERRO SUPPORT');
+            console.log(error);
 
         }
 
@@ -516,7 +494,10 @@ ${supportStatus}
 
             await ctx.answerCbQuery();
 
-            await clearTemporaryMessage(ctx);
+            await clearTemporaryMessage(
+                ctx,
+                userStates
+            );
 
             delete userStates[ctx.from.id];
 
@@ -530,7 +511,8 @@ ${supportStatus}
 
         } catch (error) {
 
-            console.log('❌ ERRO HOME:', error);
+            console.log('❌ ERRO HOME');
+            console.log(error);
 
         }
 
