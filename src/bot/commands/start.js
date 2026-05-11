@@ -14,8 +14,6 @@ const {
 
 const userStates = {};
 
-const usersDatabase = {};
-
 const RULES = {
     deposit: {
         minimum: 20,
@@ -67,7 +65,11 @@ const clearTemporaryMessage = async (ctx) => {
 
 };
 
-module.exports = (bot) => {
+module.exports = (
+    bot,
+    usersDatabase,
+    pendingPayments
+) => {
 
     const getUser = (userId) => {
 
@@ -157,7 +159,7 @@ R$ ${user.balance.toFixed(2)}`;
                 action: 'waiting_deposit_amount'
             };
 
-            const depositCaption =
+            await ctx.editMessageCaption(
 `💳 <b>DEPÓSITO VIA PIX</b>
 
 ━━━━━━━━━━━━━━━
@@ -169,21 +171,7 @@ R$ ${user.balance.toFixed(2)}`;
 
 ━━━━━━━━━━━━━━━
 
-💰 <b>TAXA OPERACIONAL</b>
-
-• Entre R$ 20 e R$ 29,99 → taxa fixa R$ 3,50
-• Acima de R$ 30 → taxa 6%
-
-━━━━━━━━━━━━━━━
-
-⚡ <b>BENEFÍCIOS</b>
-
-• Liquidação instantânea
-• Saques gratuitos
-• Sistema online 24/7`;
-
-            await ctx.editMessageCaption(
-                depositCaption,
+⚡ Digite o valor do depósito.`,
                 {
                     parse_mode: 'HTML',
                     ...backMenu()
@@ -212,9 +200,10 @@ R$ ${user.balance.toFixed(2)}`;
 
             if (!userState) return;
 
-            const user = getUser(ctx.from.id);
-
-            if (userState.action === 'waiting_deposit_amount') {
+            if (
+                userState.action ===
+                'waiting_deposit_amount'
+            ) {
 
                 await clearTemporaryMessage(ctx);
 
@@ -235,13 +224,20 @@ R$ ${user.balance.toFixed(2)}`;
                         `❌ Valor inválido.\n\nDigite um valor entre R$ ${RULES.deposit.minimum} e R$ ${RULES.deposit.maximum}.`
                     );
 
-                    userStates[ctx.from.id].messageId = askMessage.message_id;
+                    userStates[ctx.from.id].messageId =
+                        askMessage.message_id;
 
                     return;
 
                 }
 
-                const payment = await createPixDeposit(value);
+                const webhookUrl =
+`https://tecofertamax.shop/webhook/pushinpay`;
+
+                const payment = await createPixDeposit(
+                    value,
+                    webhookUrl
+                );
 
                 if (!payment) {
 
@@ -253,6 +249,14 @@ R$ ${user.balance.toFixed(2)}`;
 
                 }
 
+                pendingPayments[payment.id] = {
+                    id: payment.id,
+                    amount: value,
+                    userId: ctx.from.id,
+                    firstName: ctx.from.first_name,
+                    status: 'pending'
+                };
+
                 const qrCodeImage = await QRCode.toBuffer(
                     payment.qr_code
                 );
@@ -263,7 +267,7 @@ R$ ${user.balance.toFixed(2)}`;
                     },
                     {
                         caption:
-`✅ <b>PIX GERADO COM SUCESSO</b>
+`💳 <b>PAGAMENTO PIX GERADO</b>
 
 ━━━━━━━━━━━━━━━
 
@@ -278,10 +282,12 @@ R$ ${value.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-⚠️ IMPORTANTE
+⚠️ O saldo será liberado
+somente após o pagamento REAL.
 
-O saldo será liberado somente
-após a confirmação REAL do pagamento.`,
+━━━━━━━━━━━━━━━
+
+🕒 Aguardando pagamento...`,
                         parse_mode: 'HTML',
                         ...backMenu()
                     }
@@ -289,7 +295,9 @@ após a confirmação REAL do pagamento.`,
 
                 await bot.telegram.sendMessage(
                     process.env.ADMIN_TELEGRAM_ID,
-`💰 <b>NOVO DEPÓSITO GERADO</b>
+`💰 <b>NOVO PIX GERADO</b>
+
+━━━━━━━━━━━━━━━
 
 👤 Usuário:
 ${ctx.from.first_name}
@@ -301,7 +309,12 @@ ${ctx.from.first_name}
 R$ ${value.toFixed(2)}
 
 🧾 TXID:
-<code>${payment.id}</code>`,
+<code>${payment.id}</code>
+
+━━━━━━━━━━━━━━━
+
+⏳ STATUS:
+AGUARDANDO PAGAMENTO`,
                     {
                         parse_mode: 'HTML'
                     }
@@ -331,19 +344,22 @@ R$ ${value.toFixed(2)}
 
             const user = getUser(ctx.from.id);
 
-            if (user.balance < RULES.withdraw.minimum) {
+            if (
+                user.balance <
+                RULES.withdraw.minimum
+            ) {
 
                 return await ctx.editMessageCaption(
 `❌ <b>SALDO INSUFICIENTE</b>
 
 ━━━━━━━━━━━━━━━
 
-Saque mínimo permitido:
+Saque mínimo:
 R$ ${RULES.withdraw.minimum.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-Seu saldo atual:
+Saldo atual:
 R$ ${user.balance.toFixed(2)}`,
                     {
                         parse_mode: 'HTML',
@@ -363,8 +379,8 @@ R$ ${user.balance.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-⚠️ Seu saque foi enviado
-para análise manual.`,
+⏳ Seu saque entrou
+em análise manual.`,
                 {
                     parse_mode: 'HTML',
                     ...backMenu()
@@ -375,6 +391,8 @@ para análise manual.`,
                 process.env.ADMIN_TELEGRAM_ID,
 `💸 <b>NOVO PEDIDO DE SAQUE</b>
 
+━━━━━━━━━━━━━━━
+
 👤 Usuário:
 ${ctx.from.first_name}
 
@@ -382,7 +400,11 @@ ${ctx.from.first_name}
 <code>${ctx.from.id}</code>
 
 💰 Saldo:
-R$ ${user.balance.toFixed(2)}`,
+R$ ${user.balance.toFixed(2)}
+
+━━━━━━━━━━━━━━━
+
+⚠️ Aguardando aprovação manual.`,
                 {
                     parse_mode: 'HTML'
                 }
@@ -406,35 +428,35 @@ R$ ${user.balance.toFixed(2)}`,
 
             const user = getUser(ctx.from.id);
 
-            const firstName = ctx.from.first_name || 'Usuário';
+            const firstName =
+                ctx.from.first_name || 'Usuário';
 
-            const walletCaption =
+            await ctx.editMessageCaption(
 `💼 <b>CARTEIRA DIGITAL</b>
 
 ━━━━━━━━━━━━━━━
 
-⭐️ <b>CONTA</b>
-
-👤 Titular: ${firstName}
+👤 Titular:
+${firstName}
 
 🆔 ID:
 <code>${ctx.from.id}</code>
 
 ━━━━━━━━━━━━━━━
 
-⚡️ <b>RESUMO FINANCEIRO</b>
+💰 Saldo:
+R$ ${user.balance.toFixed(2)}
 
-├ 💰 Saldo disponível: R$ ${user.balance.toFixed(2)}
-├ 📥 Total depositado: R$ ${user.deposited.toFixed(2)}
-└ 📤 Total sacado: R$ ${user.withdrawed.toFixed(2)}
+📥 Depositado:
+R$ ${user.deposited.toFixed(2)}
+
+📤 Sacado:
+R$ ${user.withdrawed.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-📅 Conta desde:
-${user.createdAt}`;
-
-            await ctx.editMessageCaption(
-                walletCaption,
+📅 Conta criada:
+${user.createdAt}`,
                 {
                     parse_mode: 'HTML',
                     ...walletMenu()
@@ -457,11 +479,13 @@ ${user.createdAt}`;
 
             await clearTemporaryMessage(ctx);
 
-            const supportOnline = isOperationalTime();
+            const supportOnline =
+                isOperationalTime();
 
-            const supportStatus = supportOnline
-                ? '🟢 SUPORTE ONLINE'
-                : '🟡 SUPORTE OFFLINE';
+            const supportStatus =
+                supportOnline
+                    ? '🟢 SUPORTE ONLINE'
+                    : '🟡 SUPORTE OFFLINE';
 
             await ctx.editMessageCaption(
 `🎧 <b>CENTRAL DE SUPORTE</b>
