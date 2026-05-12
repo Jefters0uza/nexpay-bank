@@ -1,15 +1,9 @@
 const path = require('path');
-const QRCode = require('qrcode');
 
 const {
     mainMenu,
-    backMenu,
-    walletMenu
+    backMenu
 } = require('../menus/mainMenu');
-
-const {
-    createPixDeposit
-} = require('../../services/pushinPay');
 
 const {
     userStates
@@ -24,16 +18,23 @@ const {
     isOperationalTime
 } = require('../../utils/helpers');
 
-const RULES = {
-    deposit: {
-        minimum: 20,
-        maximum: 1500
-    },
+const walletHandler =
+    require('../handlers/walletHandler');
 
-    withdraw: {
-        minimum: 25
-    }
-};
+const withdrawHandler =
+    require('../handlers/withdrawHandler');
+
+const termsHandler =
+    require('../handlers/termsHandler');
+
+const affiliateHandler =
+    require('../handlers/affiliateHandler');
+
+const historyHandler =
+    require('../handlers/historyHandler');
+
+const textHandler =
+    require('../handlers/textHandler');
 
 module.exports = (
     bot,
@@ -41,12 +42,41 @@ module.exports = (
     pendingPayments
 ) => {
 
+    /*
+    ===============================
+    HANDLERS
+    ===============================
+    */
+
+    walletHandler(bot);
+
+    withdrawHandler(bot);
+
+    termsHandler(bot);
+
+    affiliateHandler(bot);
+
+    historyHandler(bot);
+
+    textHandler(
+        bot,
+        pendingPayments
+    );
+
+    /*
+    ===============================
+    HOME
+    ===============================
+    */
+
     const getHomeCaption = (ctx) => {
 
-        const user = getUser(ctx.from.id);
+        const user =
+            getUser(ctx.from.id);
 
         const formattedDate =
-            new Date().toLocaleString('pt-BR');
+            new Date()
+                .toLocaleString('pt-BR');
 
         return `🏦 <b>BEM-VINDO À NEXPAY BANK</b>
 
@@ -71,13 +101,43 @@ R$ ${user.balance.toFixed(2)}`;
 
     };
 
+    /*
+    ===============================
+    START
+    ===============================
+    */
+
     bot.start(async (ctx) => {
 
         try {
 
-            delete userStates[ctx.from.id];
+            delete userStates[
+                ctx.from.id
+            ];
 
-            getUser(ctx.from.id);
+            const user =
+                getUser(ctx.from.id);
+
+            /*
+            ==========================
+            AFILIADO
+            ==========================
+            */
+
+            const startPayload =
+                ctx.payload;
+
+            if (
+                startPayload &&
+                !user.invitedBy &&
+                startPayload !==
+                    String(ctx.from.id)
+            ) {
+
+                user.invitedBy =
+                    Number(startPayload);
+
+            }
 
             await ctx.replyWithPhoto(
                 {
@@ -87,37 +147,57 @@ R$ ${user.balance.toFixed(2)}`;
                     )
                 },
                 {
-                    caption: getHomeCaption(ctx),
-                    parse_mode: 'HTML',
+                    caption:
+                        getHomeCaption(ctx),
+
+                    parse_mode:
+                        'HTML',
+
                     ...mainMenu()
                 }
             );
 
         } catch (error) {
 
-            console.log('❌ ERRO START');
+            console.log(
+                '❌ ERRO START'
+            );
+
             console.log(error);
 
         }
 
     });
 
-    bot.action('deposit', async (ctx) => {
+    /*
+    ===============================
+    DEPÓSITO
+    ===============================
+    */
 
-        try {
+    bot.action(
+        'deposit',
+        async (ctx) => {
 
-            await ctx.answerCbQuery();
+            try {
 
-            await clearTemporaryMessage(
-                ctx,
-                userStates
-            );
+                await ctx.answerCbQuery();
 
-            userStates[ctx.from.id] = {
-                action: 'waiting_deposit_amount'
-            };
+                await clearTemporaryMessage(
+                    ctx,
+                    userStates
+                );
 
-            await ctx.editMessageCaption(
+                userStates[
+                    ctx.from.id
+                ] = {
+
+                    action:
+                        'waiting_deposit_amount'
+
+                };
+
+                await ctx.editMessageCaption(
 `💳 <b>DEPÓSITO VIA PIX</b>
 
 ━━━━━━━━━━━━━━━
@@ -130,66 +210,17 @@ R$ ${user.balance.toFixed(2)}`;
 ━━━━━━━━━━━━━━━
 
 💰 Digite o valor do depósito.`,
-                {
-                    parse_mode: 'HTML',
-                    ...backMenu()
-                }
-            );
+                    {
+                        parse_mode:
+                            'HTML',
 
-            const askMessage =
-                await ctx.reply(
-                    `💰 Envie o valor do depósito.`
+                        ...backMenu()
+                    }
                 );
-
-            userStates[
-                ctx.from.id
-            ].messageId =
-                askMessage.message_id;
-
-        } catch (error) {
-
-            console.log('❌ ERRO DEPOSIT');
-            console.log(error);
-
-        }
-
-    });
-
-    bot.on('text', async (ctx) => {
-
-        try {
-
-            const userState =
-                userStates[ctx.from.id];
-
-            if (!userState) return;
-
-            if (
-                userState.action !==
-                'waiting_deposit_amount'
-            ) return;
-
-            await clearTemporaryMessage(
-                ctx,
-                userStates
-            );
-
-            const value = Number(
-                ctx.message.text
-                    .replace(',', '.')
-                    .replace('R$', '')
-                    .trim()
-            );
-
-            if (
-                isNaN(value) ||
-                value < RULES.deposit.minimum ||
-                value > RULES.deposit.maximum
-            ) {
 
                 const askMessage =
                     await ctx.reply(
-                        `❌ Valor inválido.\n\nDigite entre R$ ${RULES.deposit.minimum} e R$ ${RULES.deposit.maximum}.`
+                        `💰 Envie o valor do depósito.`
                     );
 
                 userStates[
@@ -197,274 +228,47 @@ R$ ${user.balance.toFixed(2)}`;
                 ].messageId =
                     askMessage.message_id;
 
-                return;
+            } catch (error) {
+
+                console.log(
+                    '❌ ERRO DEPOSIT'
+                );
+
+                console.log(error);
 
             }
 
-            const webhookUrl =
-                'https://tecofertamax.shop/webhook/pushinpay';
-
-            const payment =
-                await createPixDeposit(
-                    value,
-                    webhookUrl
-                );
-
-            if (!payment) {
-
-                await ctx.reply(
-                    '❌ Erro ao gerar PIX.'
-                );
-
-                return;
-
-            }
-
-            pendingPayments[payment.id] = {
-                id: payment.id,
-                amount: value,
-                userId: ctx.from.id,
-                firstName: ctx.from.first_name,
-                status: 'pending'
-            };
-
-            const qrCodeImage =
-                await QRCode.toBuffer(
-                    payment.qr_code
-                );
-
-            await ctx.replyWithPhoto(
-                {
-                    source: qrCodeImage
-                },
-                {
-                    caption:
-`💳 <b>PAGAMENTO PIX GERADO</b>
-
-━━━━━━━━━━━━━━━
-
-💰 Valor:
-R$ ${value.toFixed(2)}
-
-━━━━━━━━━━━━━━━
-
-📋 PIX COPIA E COLA
-
-<code>${payment.qr_code}</code>
-
-━━━━━━━━━━━━━━━
-
-⚠️ O saldo será liberado
-somente após pagamento REAL.
-
-━━━━━━━━━━━━━━━
-
-🕒 Aguardando pagamento...`,
-                    parse_mode: 'HTML',
-                    ...backMenu()
-                }
-            );
-
-            await bot.telegram.sendMessage(
-                process.env.ADMIN_TELEGRAM_ID,
-`💰 <b>NOVO PIX GERADO</b>
-
-━━━━━━━━━━━━━━━
-
-👤 Usuário:
-${ctx.from.first_name}
-
-🆔 ID:
-<code>${ctx.from.id}</code>
-
-💵 Valor:
-R$ ${value.toFixed(2)}
-
-🧾 TXID:
-<code>${payment.id}</code>
-
-━━━━━━━━━━━━━━━
-
-⏳ STATUS:
-AGUARDANDO PAGAMENTO`,
-                {
-                    parse_mode: 'HTML'
-                }
-            );
-
-            delete userStates[ctx.from.id];
-
-        } catch (error) {
-
-            console.log('❌ ERRO TEXT');
-            console.log(error);
-
         }
+    );
 
-    });
+    /*
+    ===============================
+    SUPORTE
+    ===============================
+    */
 
-    bot.action('withdraw', async (ctx) => {
+    bot.action(
+        'support',
+        async (ctx) => {
 
-        try {
+            try {
 
-            await ctx.answerCbQuery();
+                await ctx.answerCbQuery();
 
-            await clearTemporaryMessage(
-                ctx,
-                userStates
-            );
-
-            const user = getUser(ctx.from.id);
-
-            if (
-                user.balance <
-                RULES.withdraw.minimum
-            ) {
-
-                return await ctx.editMessageCaption(
-`❌ <b>SALDO INSUFICIENTE</b>
-
-━━━━━━━━━━━━━━━
-
-💸 Mínimo saque:
-R$ ${RULES.withdraw.minimum.toFixed(2)}
-
-━━━━━━━━━━━━━━━
-
-💰 Saldo:
-R$ ${user.balance.toFixed(2)}`,
-                    {
-                        parse_mode: 'HTML',
-                        ...backMenu()
-                    }
+                await clearTemporaryMessage(
+                    ctx,
+                    userStates
                 );
 
-            }
+                const supportOnline =
+                    isOperationalTime();
 
-            await ctx.editMessageCaption(
-`💸 <b>SAQUE SOLICITADO</b>
+                const supportStatus =
+                    supportOnline
+                        ? '🟢 ONLINE'
+                        : '🟡 OFFLINE';
 
-━━━━━━━━━━━━━━━
-
-💰 Valor:
-R$ ${user.balance.toFixed(2)}
-
-━━━━━━━━━━━━━━━
-
-⏳ Saque enviado
-para análise manual.`,
-                {
-                    parse_mode: 'HTML',
-                    ...backMenu()
-                }
-            );
-
-            await bot.telegram.sendMessage(
-                process.env.ADMIN_TELEGRAM_ID,
-`💸 <b>NOVO PEDIDO DE SAQUE</b>
-
-━━━━━━━━━━━━━━━
-
-👤 Usuário:
-${ctx.from.first_name}
-
-🆔 ID:
-<code>${ctx.from.id}</code>
-
-💰 Saldo:
-R$ ${user.balance.toFixed(2)}
-
-━━━━━━━━━━━━━━━
-
-⚠️ Aguardando análise.`,
-                {
-                    parse_mode: 'HTML'
-                }
-            );
-
-        } catch (error) {
-
-            console.log('❌ ERRO WITHDRAW');
-            console.log(error);
-
-        }
-
-    });
-
-    bot.action('wallet', async (ctx) => {
-
-        try {
-
-            await ctx.answerCbQuery();
-
-            await clearTemporaryMessage(
-                ctx,
-                userStates
-            );
-
-            const user = getUser(ctx.from.id);
-
-            await ctx.editMessageCaption(
-`💼 <b>CARTEIRA DIGITAL</b>
-
-━━━━━━━━━━━━━━━
-
-👤 Usuário:
-${ctx.from.first_name}
-
-🆔 ID:
-<code>${ctx.from.id}</code>
-
-━━━━━━━━━━━━━━━
-
-💰 Saldo:
-R$ ${user.balance.toFixed(2)}
-
-📥 Depositado:
-R$ ${user.deposited.toFixed(2)}
-
-📤 Sacado:
-R$ ${user.withdrawed.toFixed(2)}
-
-━━━━━━━━━━━━━━━
-
-📅 Criada em:
-${user.createdAt}`,
-                {
-                    parse_mode: 'HTML',
-                    ...walletMenu()
-                }
-            );
-
-        } catch (error) {
-
-            console.log('❌ ERRO WALLET');
-            console.log(error);
-
-        }
-
-    });
-
-    bot.action('support', async (ctx) => {
-
-        try {
-
-            await ctx.answerCbQuery();
-
-            await clearTemporaryMessage(
-                ctx,
-                userStates
-            );
-
-            const supportOnline =
-                isOperationalTime();
-
-            const supportStatus =
-                supportOnline
-                    ? '🟢 ONLINE'
-                    : '🟡 OFFLINE';
-
-            await ctx.editMessageCaption(
+                await ctx.editMessageCaption(
 `🎧 <b>SUPORTE</b>
 
 ━━━━━━━━━━━━━━━
@@ -473,49 +277,71 @@ ${supportStatus}
 
 🕒 Atendimento:
 10h às 20h`,
-                {
-                    parse_mode: 'HTML',
-                    ...backMenu()
-                }
-            );
+                    {
+                        parse_mode:
+                            'HTML',
 
-        } catch (error) {
+                        ...backMenu()
+                    }
+                );
 
-            console.log('❌ ERRO SUPPORT');
-            console.log(error);
+            } catch (error) {
 
-        }
+                console.log(
+                    '❌ ERRO SUPPORT'
+                );
 
-    });
+                console.log(error);
 
-    bot.action('home', async (ctx) => {
-
-        try {
-
-            await ctx.answerCbQuery();
-
-            await clearTemporaryMessage(
-                ctx,
-                userStates
-            );
-
-            delete userStates[ctx.from.id];
-
-            await ctx.editMessageCaption(
-                getHomeCaption(ctx),
-                {
-                    parse_mode: 'HTML',
-                    ...mainMenu()
-                }
-            );
-
-        } catch (error) {
-
-            console.log('❌ ERRO HOME');
-            console.log(error);
+            }
 
         }
+    );
 
-    });
+    /*
+    ===============================
+    HOME
+    ===============================
+    */
+
+    bot.action(
+        'home',
+        async (ctx) => {
+
+            try {
+
+                await ctx.answerCbQuery();
+
+                await clearTemporaryMessage(
+                    ctx,
+                    userStates
+                );
+
+                delete userStates[
+                    ctx.from.id
+                ];
+
+                await ctx.editMessageCaption(
+                    getHomeCaption(ctx),
+                    {
+                        parse_mode:
+                            'HTML',
+
+                        ...mainMenu()
+                    }
+                );
+
+            } catch (error) {
+
+                console.log(
+                    '❌ ERRO HOME'
+                );
+
+                console.log(error);
+
+            }
+
+        }
+    );
 
 };

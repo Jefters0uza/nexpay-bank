@@ -8,6 +8,12 @@ const morgan = require('morgan');
 
 const startCommand = require('./bot/commands/start');
 
+const {
+    usersDatabase,
+    getUser,
+    addHistory
+} = require('./database/users');
+
 const app = express();
 
 app.use(cors());
@@ -17,10 +23,13 @@ app.use(express.json());
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-const usersDatabase = {};
 const pendingPayments = {};
 
-startCommand(bot, usersDatabase, pendingPayments);
+startCommand(
+    bot,
+    usersDatabase,
+    pendingPayments
+);
 
 app.get('/', (req, res) => {
 
@@ -51,7 +60,8 @@ app.post('/webhook/pushinpay', async (req, res) => {
 
         }
 
-        const payment = pendingPayments[paymentData.id];
+        const payment =
+            pendingPayments[paymentData.id];
 
         if (!payment) {
 
@@ -75,12 +85,89 @@ app.post('/webhook/pushinpay', async (req, res) => {
 
             payment.status = 'paid';
 
-            const user = usersDatabase[payment.userId];
+            const user =
+                getUser(payment.userId);
 
-            if (user) {
+            user.balance += payment.amount;
 
-                user.balance += payment.amount;
-                user.deposited += payment.amount;
+            user.deposited += payment.amount;
+
+            addHistory(
+                payment.userId,
+                'DEPÓSITO PIX',
+                payment.amount
+            );
+
+            /*
+            ===================================
+            SISTEMA DE AFILIADOS
+            ===================================
+            */
+
+            if (
+                user.invitedBy &&
+                !payment.affiliatePaid
+            ) {
+
+                const affiliateUser =
+                    getUser(
+                        user.invitedBy
+                    );
+
+                const commission =
+                    payment.amount * 0.015;
+
+                affiliateUser.balance +=
+                    commission;
+
+                affiliateUser.affiliateBalance +=
+                    commission;
+
+                affiliateUser.affiliateEarnings +=
+                    commission;
+
+                affiliateUser.referrals.push({
+                    userId: payment.userId,
+                    amount: payment.amount
+                });
+
+                addHistory(
+                    user.invitedBy,
+                    'COMISSÃO AFILIADO',
+                    commission
+                );
+
+                payment.affiliatePaid = true;
+
+                try {
+
+                    await bot.telegram.sendMessage(
+                        user.invitedBy,
+`💸 <b>COMISSÃO RECEBIDA</b>
+
+━━━━━━━━━━━━━━━
+
+👤 Novo indicado ativo.
+
+💰 Comissão:
+R$ ${commission.toFixed(2)}
+
+━━━━━━━━━━━━━━━
+
+⚡ Valor já disponível
+em sua carteira.`,
+                        {
+                            parse_mode: 'HTML'
+                        }
+                    );
+
+                } catch (error) {
+
+                    console.log(
+                        '❌ ERRO COMISSÃO AFILIADO'
+                    );
+
+                }
 
             }
 
@@ -97,8 +184,8 @@ R$ ${payment.amount.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
-⚡ O valor já está disponível
-em sua carteira.`,
+⚡ O valor já está
+disponível em sua carteira.`,
                     {
                         parse_mode: 'HTML'
                     }
@@ -106,7 +193,9 @@ em sua carteira.`,
 
             } catch (error) {
 
-                console.log('❌ ERRO AO ENVIAR MSG USUÁRIO');
+                console.log(
+                    '❌ ERRO MSG USER'
+                );
 
             }
 
@@ -138,7 +227,9 @@ PAGO`,
 
             } catch (error) {
 
-                console.log('❌ ERRO AO NOTIFICAR ADMIN');
+                console.log(
+                    '❌ ERRO MSG ADMIN'
+                );
 
             }
 
@@ -161,31 +252,42 @@ PAGO`,
 
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT =
+    process.env.PORT || 3000;
 
 async function startServer() {
 
     try {
 
-        const botInfo = await bot.telegram.getMe();
+        const botInfo =
+            await bot.telegram.getMe();
 
-        console.log(`🤖 Bot conectado: @${botInfo.username}`);
+        console.log(
+            `🤖 Bot conectado: @${botInfo.username}`
+        );
 
         bot.launch({
             dropPendingUpdates: true
         });
 
-        console.log('🤖 Bot NexPay ONLINE');
+        console.log(
+            '🤖 Bot NexPay ONLINE'
+        );
 
         app.listen(PORT, () => {
 
-            console.log(`🚀 Servidor rodando na porta ${PORT}`);
+            console.log(
+                `🚀 Servidor rodando na porta ${PORT}`
+            );
 
         });
 
     } catch (error) {
 
-        console.log('❌ ERRO AO INICIAR O BOT');
+        console.log(
+            '❌ ERRO AO INICIAR O BOT'
+        );
+
         console.log(error);
 
     }
