@@ -44,24 +44,38 @@ module.exports = (
 
     /*
     ===============================
-    HANDLERS
+    EVITA DUPLICAR HANDLERS
     ===============================
     */
 
-    walletHandler(bot);
+    if (!bot.handlersLoaded) {
 
-    withdrawHandler(bot);
+        console.log(
+            '✅ CARREGANDO HANDLERS'
+        );
 
-    termsHandler(bot);
+        walletHandler(bot);
 
-    affiliateHandler(bot);
+        withdrawHandler(bot);
 
-    historyHandler(bot);
+        termsHandler(bot);
 
-    textHandler(
-        bot,
-        pendingPayments
-    );
+        affiliateHandler(bot);
+
+        historyHandler(bot);
+
+        textHandler(
+            bot,
+            pendingPayments
+        );
+
+        bot.handlersLoaded = true;
+
+        console.log(
+            '✅ HANDLERS CARREGADOS'
+        );
+
+    }
 
     /*
     ===============================
@@ -107,9 +121,17 @@ R$ ${user.balance.toFixed(2)}`;
     ===============================
     */
 
+    console.log(
+        '✅ START HANDLER CARREGADO'
+    );
+
     bot.start(async (ctx) => {
 
         try {
+
+            console.log(
+                `🚀 /start recebido de ${ctx.from.id}`
+            );
 
             delete userStates[
                 ctx.from.id
@@ -155,6 +177,10 @@ R$ ${user.balance.toFixed(2)}`;
 
                     ...mainMenu()
                 }
+            );
+
+            console.log(
+                `✅ START enviado para ${ctx.from.id}`
             );
 
         } catch (error) {
