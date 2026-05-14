@@ -266,9 +266,7 @@ async function startServer() {
             `🤖 Bot conectado: @${botInfo.username}`
         );
 
-        bot.launch({
-            dropPendingUpdates: true
-        });
+        await bot.launch();
 
         console.log(
             '🤖 Bot NexPay ONLINE'
