@@ -23,6 +23,20 @@ module.exports = (
 
         try {
 
+            /*
+            =================================
+            IGNORA COMANDOS DO TELEGRAM
+            =================================
+            */
+
+            if (
+                ctx.message.text.startsWith('/')
+            ) {
+
+                return;
+
+            }
+
             const state =
                 userStates[ctx.from.id];
 
