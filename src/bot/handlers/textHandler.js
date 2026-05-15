@@ -19,107 +19,104 @@ module.exports = (
     pendingPayments
 ) => {
 
-    bot.on('text', async (ctx) => {
+    /*
+    =================================
+    IGNORA /START E COMANDOS
+    =================================
+    */
 
-        try {
+    bot.hears(
+        /^(?!\/start).*$/i,
 
-            /*
-            =================================
-            IGNORA COMANDOS DO TELEGRAM
-            =================================
-            */
+        async (ctx) => {
 
-            if (
-                ctx.message.text.startsWith('/')
-            ) {
+            try {
 
-                return;
+                const state =
+                    userStates[
+                        ctx.from.id
+                    ];
 
-            }
+                if (!state) return;
 
-            const state =
-                userStates[ctx.from.id];
-
-            if (!state) return;
-
-            /*
-            =================================
-            DEPÓSITO
-            =================================
-            */
-
-            if (
-                state.action ===
-                'waiting_deposit_amount'
-            ) {
-
-                const value = Number(
-                    ctx.message.text
-                        .replace(',', '.')
-                        .replace('R$', '')
-                        .trim()
-                );
+                /*
+                =================================
+                DEPÓSITO
+                =================================
+                */
 
                 if (
-                    isNaN(value) ||
-                    value < 20 ||
-                    value > 1500
+                    state.action ===
+                    'waiting_deposit_amount'
                 ) {
 
-                    return await ctx.reply(
+                    const value = Number(
+                        ctx.message.text
+                            .replace(',', '.')
+                            .replace('R$', '')
+                            .trim()
+                    );
+
+                    if (
+                        isNaN(value) ||
+                        value < 20 ||
+                        value > 1500
+                    ) {
+
+                        return await ctx.reply(
 `❌ Valor inválido.
 
 Digite entre R$ 20 e R$ 1500.`
-                    );
+                        );
 
-                }
+                    }
 
-                const webhookUrl =
+                    const webhookUrl =
 'https://tecofertamax.shop/webhook/pushinpay';
 
-                const payment =
-                    await createPixDeposit(
-                        value,
-                        webhookUrl
-                    );
+                    const payment =
+                        await createPixDeposit(
+                            value,
+                            webhookUrl
+                        );
 
-                if (!payment) {
+                    if (!payment) {
 
-                    return await ctx.reply(
+                        return await ctx.reply(
 `❌ Erro ao gerar PIX.`
-                    );
+                        );
 
-                }
+                    }
 
-                pendingPayments[
-                    payment.id
-                ] = {
+                    pendingPayments[
+                        payment.id
+                    ] = {
 
-                    id: payment.id,
+                        id: payment.id,
 
-                    amount: value,
+                        amount: value,
 
-                    userId: ctx.from.id,
+                        userId: ctx.from.id,
 
-                    firstName:
-                        ctx.from.first_name,
+                        firstName:
+                            ctx.from.first_name,
 
-                    status: 'pending'
+                        status: 'pending'
 
-                };
+                    };
 
-                const qrCodeImage =
-                    await QRCode.toBuffer(
-                        payment.qr_code
-                    );
+                    const qrCodeImage =
+                        await QRCode.toBuffer(
+                            payment.qr_code
+                        );
 
-                await ctx.replyWithPhoto(
-                    {
-                        source:
-                            qrCodeImage
-                    },
-                    {
-                        caption:
+                    await ctx.replyWithPhoto(
+                        {
+                            source:
+                                qrCodeImage
+                        },
+                        {
+                            caption:
 `💳 <b>PIX GERADO</b>
 
 ━━━━━━━━━━━━━━━
@@ -134,108 +131,108 @@ R$ ${value.toFixed(2)}
 ━━━━━━━━━━━━━━━
 
 🕒 Aguardando pagamento...`,
-                        parse_mode:
-                            'HTML'
-                    }
-                );
+                            parse_mode:
+                                'HTML'
+                        }
+                    );
 
-                delete userStates[
-                    ctx.from.id
-                ];
+                    delete userStates[
+                        ctx.from.id
+                    ];
 
-                return;
+                    return;
 
-            }
+                }
 
-            /*
-            =================================
-            SAQUE
-            =================================
-            */
+                /*
+                =================================
+                SAQUE
+                =================================
+                */
 
-            const user =
-                getUser(ctx.from.id);
+                const user =
+                    getUser(ctx.from.id);
 
-            if (
-                state.action ===
-                'waiting_pix_name'
-            ) {
+                if (
+                    state.action ===
+                    'waiting_pix_name'
+                ) {
 
-                userStates[
-                    ctx.from.id
-                ] = {
+                    userStates[
+                        ctx.from.id
+                    ] = {
 
-                    action:
-                        'waiting_pix_type',
+                        action:
+                            'waiting_pix_type',
 
-                    pixName:
-                        ctx.message.text
+                        pixName:
+                            ctx.message.text
 
-                };
+                    };
 
-                return await ctx.reply(
+                    return await ctx.reply(
 `🏦 Envie o tipo da chave PIX.
 
 Ex:
 CPF
 EMAIL
 TELEFONE`
-                );
+                    );
 
-            }
+                }
 
-            if (
-                state.action ===
-                'waiting_pix_type'
-            ) {
+                if (
+                    state.action ===
+                    'waiting_pix_type'
+                ) {
 
-                userStates[
-                    ctx.from.id
-                ] = {
+                    userStates[
+                        ctx.from.id
+                    ] = {
 
-                    ...state,
+                        ...state,
 
-                    action:
-                        'waiting_pix_key',
+                        action:
+                            'waiting_pix_key',
 
-                    pixType:
-                        ctx.message.text
+                        pixType:
+                            ctx.message.text
 
-                };
+                    };
 
-                return await ctx.reply(
+                    return await ctx.reply(
 `🔑 Agora envie sua chave PIX.`
-                );
+                    );
 
-            }
+                }
 
-            if (
-                state.action ===
-                'waiting_pix_key'
-            ) {
+                if (
+                    state.action ===
+                    'waiting_pix_key'
+                ) {
 
-                user.pixData = {
+                    user.pixData = {
 
-                    name:
-                        state.pixName,
+                        name:
+                            state.pixName,
 
-                    type:
-                        state.pixType,
+                        type:
+                            state.pixType,
 
-                    key:
-                        ctx.message.text
+                        key:
+                            ctx.message.text
 
-                };
+                    };
 
-                addHistory(
-                    ctx.from.id,
-                    'SOLICITAÇÃO SAQUE',
-                    user.balance
-                );
+                    addHistory(
+                        ctx.from.id,
+                        'SOLICITAÇÃO SAQUE',
+                        user.balance
+                    );
 
-                saveDatabase();
+                    saveDatabase();
 
-                await ctx.reply(
+                    await ctx.reply(
 `✅ <b>SAQUE SOLICITADO</b>
 
 ━━━━━━━━━━━━━━━
@@ -247,15 +244,15 @@ R$ ${user.balance.toFixed(2)}
 
 ⏳ Solicitação enviada
 para análise manual.`,
-                    {
-                        parse_mode:
-                            'HTML'
-                    }
-                );
+                        {
+                            parse_mode:
+                                'HTML'
+                        }
+                    );
 
-                await bot.telegram.sendMessage(
-                    process.env
-                        .ADMIN_TELEGRAM_ID,
+                    await bot.telegram.sendMessage(
+                        process.env
+                            .ADMIN_TELEGRAM_ID,
 
 `💸 <b>NOVO SAQUE</b>
 
@@ -278,28 +275,29 @@ ${state.pixType}
 
 🔑 Chave:
 <code>${ctx.message.text}</code>`,
-                    {
-                        parse_mode:
-                            'HTML'
-                    }
+                        {
+                            parse_mode:
+                                'HTML'
+                        }
+                    );
+
+                    delete userStates[
+                        ctx.from.id
+                    ];
+
+                }
+
+            } catch (error) {
+
+                console.log(
+                    '❌ ERRO TEXT HANDLER'
                 );
 
-                delete userStates[
-                    ctx.from.id
-                ];
+                console.log(error);
 
             }
 
-        } catch (error) {
-
-            console.log(
-                '❌ ERRO TEXT HANDLER'
-            );
-
-            console.log(error);
-
         }
-
-    });
+    );
 
 };
