@@ -1,12 +1,17 @@
 require('dotenv').config();
 
 const { Telegraf } = require('telegraf');
+
 const express = require('express');
+
 const cors = require('cors');
+
 const helmet = require('helmet');
+
 const morgan = require('morgan');
 
-const startCommand = require('./bot/commands/start');
+const startCommand =
+    require('./bot/commands/start');
 
 const {
     usersDatabase,
@@ -16,14 +21,76 @@ const {
 
 const app = express();
 
+const bot =
+    new Telegraf(
+        process.env.BOT_TOKEN
+    );
+
+/*
+==================================
+MIDDLEWARES EXPRESS
+==================================
+*/
+
 app.use(cors());
+
 app.use(helmet());
+
 app.use(morgan('dev'));
+
 app.use(express.json());
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+/*
+==================================
+DEBUG UPDATES
+==================================
+*/
+
+bot.use(async (ctx, next) => {
+
+    try {
+
+        console.log(
+            '📩 UPDATE RECEBIDO:',
+            ctx.updateType
+        );
+
+        if (ctx.message?.text) {
+
+            console.log(
+                '💬 MSG:',
+                ctx.message.text
+            );
+
+        }
+
+        await next();
+
+    } catch (error) {
+
+        console.log(
+            '❌ ERRO MIDDLEWARE'
+        );
+
+        console.log(error);
+
+    }
+
+});
+
+/*
+==================================
+PAYMENTS
+==================================
+*/
 
 const pendingPayments = {};
+
+/*
+==================================
+COMMANDS
+==================================
+*/
 
 startCommand(
     bot,
@@ -31,226 +98,168 @@ startCommand(
     pendingPayments
 );
 
+/*
+==================================
+ROUTES
+==================================
+*/
+
 app.get('/', (req, res) => {
 
-    res.json({
+    return res.json({
+
         status: true,
-        message: 'NexPay API ONLINE'
+
+        message:
+            'NexPay API ONLINE'
+
     });
 
 });
 
-app.post('/webhook/pushinpay', async (req, res) => {
+/*
+==================================
+WEBHOOK PUSHINPAY
+==================================
+*/
 
-    try {
+app.post(
+    '/webhook/pushinpay',
 
-        const paymentData = req.body;
+    async (req, res) => {
 
-        console.log('💰 WEBHOOK RECEBIDO');
-        console.log(paymentData);
+        try {
 
-        if (
-            !paymentData ||
-            !paymentData.id
-        ) {
+            const paymentData =
+                req.body;
 
-            return res.status(400).json({
-                error: true
-            });
-
-        }
-
-        const payment =
-            pendingPayments[paymentData.id];
-
-        if (!payment) {
-
-            return res.status(200).json({
-                received: true
-            });
-
-        }
-
-        if (payment.status === 'paid') {
-
-            return res.status(200).json({
-                received: true
-            });
-
-        }
-
-        if (
-            paymentData.status === 'paid'
-        ) {
-
-            payment.status = 'paid';
-
-            const user =
-                getUser(payment.userId);
-
-            user.balance += payment.amount;
-
-            user.deposited += payment.amount;
-
-            addHistory(
-                payment.userId,
-                'DEPÓSITO PIX',
-                payment.amount
+            console.log(
+                '💰 WEBHOOK RECEBIDO'
             );
 
-            /*
-            ===================================
-            SISTEMA DE AFILIADOS
-            ===================================
-            */
+            console.log(paymentData);
 
             if (
-                user.invitedBy &&
-                !payment.affiliatePaid
+                !paymentData ||
+                !paymentData.id
             ) {
 
-                const affiliateUser =
+                return res
+                    .status(400)
+                    .json({
+                        error: true
+                    });
+
+            }
+
+            const payment =
+                pendingPayments[
+                    paymentData.id
+                ];
+
+            if (!payment) {
+
+                return res
+                    .status(200)
+                    .json({
+                        received: true
+                    });
+
+            }
+
+            if (
+                payment.status ===
+                'paid'
+            ) {
+
+                return res
+                    .status(200)
+                    .json({
+                        received: true
+                    });
+
+            }
+
+            if (
+                paymentData.status ===
+                'paid'
+            ) {
+
+                payment.status = 'paid';
+
+                const user =
                     getUser(
-                        user.invitedBy
+                        payment.userId
                     );
 
-                const commission =
-                    payment.amount * 0.015;
+                user.balance +=
+                    payment.amount;
 
-                affiliateUser.balance +=
-                    commission;
-
-                affiliateUser.affiliateBalance +=
-                    commission;
-
-                affiliateUser.affiliateEarnings +=
-                    commission;
-
-                affiliateUser.referrals.push({
-                    userId: payment.userId,
-                    amount: payment.amount
-                });
+                user.deposited +=
+                    payment.amount;
 
                 addHistory(
-                    user.invitedBy,
-                    'COMISSÃO AFILIADO',
-                    commission
+                    payment.userId,
+                    'DEPÓSITO PIX',
+                    payment.amount
                 );
-
-                payment.affiliatePaid = true;
 
                 try {
 
                     await bot.telegram.sendMessage(
-                        user.invitedBy,
-`💸 <b>COMISSÃO RECEBIDA</b>
 
-━━━━━━━━━━━━━━━
+                        payment.userId,
 
-👤 Novo indicado ativo.
+`✅ <b>DEPÓSITO CONFIRMADO</b>
 
-💰 Comissão:
-R$ ${commission.toFixed(2)}
+💰 Valor:
+R$ ${payment.amount.toFixed(2)}`,
 
-━━━━━━━━━━━━━━━
-
-⚡ Valor já disponível
-em sua carteira.`,
                         {
-                            parse_mode: 'HTML'
+                            parse_mode:
+                                'HTML'
                         }
+
                     );
 
                 } catch (error) {
 
-                    console.log(
-                        '❌ ERRO COMISSÃO AFILIADO'
-                    );
+                    console.log(error);
 
                 }
 
             }
 
-            try {
+            return res
+                .status(200)
+                .json({
+                    success: true
+                });
 
-                await bot.telegram.sendMessage(
-                    payment.userId,
-`✅ <b>DEPÓSITO CONFIRMADO</b>
+        } catch (error) {
 
-━━━━━━━━━━━━━━━
+            console.log(
+                '❌ ERRO WEBHOOK'
+            );
 
-💰 Valor:
-R$ ${payment.amount.toFixed(2)}
+            console.log(error);
 
-━━━━━━━━━━━━━━━
-
-⚡ O valor já está
-disponível em sua carteira.`,
-                    {
-                        parse_mode: 'HTML'
-                    }
-                );
-
-            } catch (error) {
-
-                console.log(
-                    '❌ ERRO MSG USER'
-                );
-
-            }
-
-            try {
-
-                await bot.telegram.sendMessage(
-                    process.env.ADMIN_TELEGRAM_ID,
-`💸 <b>NOVO DEPÓSITO PAGO</b>
-
-━━━━━━━━━━━━━━━
-
-👤 Usuário:
-${payment.firstName}
-
-🆔 ID:
-<code>${payment.userId}</code>
-
-💰 Valor:
-R$ ${payment.amount.toFixed(2)}
-
-━━━━━━━━━━━━━━━
-
-✅ STATUS:
-PAGO`,
-                    {
-                        parse_mode: 'HTML'
-                    }
-                );
-
-            } catch (error) {
-
-                console.log(
-                    '❌ ERRO MSG ADMIN'
-                );
-
-            }
+            return res
+                .status(500)
+                .json({
+                    error: true
+                });
 
         }
 
-        return res.status(200).json({
-            success: true
-        });
-
-    } catch (error) {
-
-        console.log('❌ ERRO WEBHOOK');
-        console.log(error);
-
-        return res.status(500).json({
-            error: true
-        });
-
     }
+);
 
-});
+/*
+==================================
+SERVER
+==================================
+*/
 
 const PORT =
     process.env.PORT || 3000;
@@ -259,23 +268,51 @@ async function startServer() {
 
     try {
 
+        console.log(
+            '🚀 INICIANDO BOT'
+        );
+
         const botInfo =
             await bot.telegram.getMe();
 
         console.log(
-            `🤖 Bot conectado: @${botInfo.username}`
+            `🤖 @${botInfo.username}`
         );
+
+        /*
+        ==============================
+        REMOVE WEBHOOK
+        ==============================
+        */
+
+        await bot.telegram.deleteWebhook();
+
+        console.log(
+            '🧹 WEBHOOK REMOVIDO'
+        );
+
+        /*
+        ==============================
+        START BOT
+        ==============================
+        */
 
         await bot.launch();
 
         console.log(
-            '🤖 Bot NexPay ONLINE'
+            '✅ BOT ONLINE'
         );
+
+        /*
+        ==============================
+        EXPRESS
+        ==============================
+        */
 
         app.listen(PORT, () => {
 
             console.log(
-                `🚀 Servidor rodando na porta ${PORT}`
+                `🌐 PORTA ${PORT}`
             );
 
         });
@@ -283,7 +320,7 @@ async function startServer() {
     } catch (error) {
 
         console.log(
-            '❌ ERRO AO INICIAR O BOT'
+            '❌ ERRO START SERVER'
         );
 
         console.log(error);
@@ -294,14 +331,28 @@ async function startServer() {
 
 startServer();
 
-process.once('SIGINT', () => {
+/*
+==================================
+STOP
+==================================
+*/
 
-    bot.stop('SIGINT');
+process.once(
+    'SIGINT',
 
-});
+    () => {
 
-process.once('SIGTERM', () => {
+        bot.stop('SIGINT');
 
-    bot.stop('SIGTERM');
+    }
+);
 
-});
+process.once(
+    'SIGTERM',
+
+    () => {
+
+        bot.stop('SIGTERM');
+
+    }
+);
