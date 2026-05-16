@@ -163,14 +163,14 @@ R$ ${user.balance.toFixed(2)}`;
 
             /*
             ==========================
-            VERIFICA LOGO
+            CAMINHO CORRETO DA LOGO
             ==========================
             */
 
             const logoPath =
                 path.resolve(
                     __dirname,
-                    '../../assets/logo.jpeg'
+                    '../assets/logo.jpeg'
                 );
 
             console.log(
