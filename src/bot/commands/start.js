@@ -163,19 +163,40 @@ R$ ${user.balance.toFixed(2)}`;
 
             /*
             ==========================
-            CAMINHO CORRETO DA LOGO
+            CAMINHO REAL DA LOGO
             ==========================
             */
 
             const logoPath =
-                path.resolve(
-                    __dirname,
-                    '../assets/logo.jpeg'
+                path.join(
+                    process.cwd(),
+                    'src',
+                    'assets',
+                    'logo.jpeg'
                 );
 
             console.log(
                 '🖼️ LOGO:',
                 logoPath
+            );
+
+            /*
+            ==========================
+            VERIFICA EXISTÊNCIA
+            ==========================
+            */
+
+            const fs =
+                require('fs');
+
+            const logoExists =
+                fs.existsSync(
+                    logoPath
+                );
+
+            console.log(
+                '🖼️ EXISTE?',
+                logoExists
             );
 
             /*
