@@ -127,55 +127,130 @@ R$ ${user.balance.toFixed(2)}`;
 
     bot.start(async (ctx) => {
 
-    try {
+        try {
 
-        console.log('🚀 START EXECUTADO');
+            console.log(
+                '🚀 START EXECUTADO'
+            );
 
-        delete userStates[
-            ctx.from.id
-        ];
+            delete userStates[
+                ctx.from.id
+            ];
 
-        const user =
-            getUser(ctx.from.id);
+            const user =
+                getUser(ctx.from.id);
 
-        const startPayload =
-            ctx.payload;
+            /*
+            ==========================
+            AFILIADO
+            ==========================
+            */
 
-        if (
-            startPayload &&
-            !user.invitedBy &&
-            startPayload !==
-                String(ctx.from.id)
-        ) {
+            const startPayload =
+                ctx.payload;
 
-            user.invitedBy =
-                Number(startPayload);
+            if (
+                startPayload &&
+                !user.invitedBy &&
+                startPayload !==
+                    String(ctx.from.id)
+            ) {
 
-        }
+                user.invitedBy =
+                    Number(startPayload);
 
-        await ctx.reply(
+            }
+
+            /*
+            ==========================
+            VERIFICA LOGO
+            ==========================
+            */
+
+            const logoPath =
+                path.resolve(
+                    __dirname,
+                    '../../assets/logo.jpeg'
+                );
+
+            console.log(
+                '🖼️ LOGO:',
+                logoPath
+            );
+
+            /*
+            ==========================
+            ENVIA HOME
+            ==========================
+            */
+
+            await ctx.replyWithPhoto(
+                {
+                    source: logoPath
+                },
+                {
+                    caption:
+                        getHomeCaption(ctx),
+
+                    parse_mode:
+                        'HTML',
+
+                    ...mainMenu()
+                }
+            );
+
+            console.log(
+                '✅ START ENVIADO'
+            );
+
+        } catch (error) {
+
+            console.log(
+                '❌ ERRO START'
+            );
+
+            console.log(error);
+
+            /*
+            ==========================
+            FALLBACK
+            ==========================
+            */
+
+            try {
+
+                const user =
+                    getUser(ctx.from.id);
+
+                await ctx.reply(
 `🏦 BEM-VINDO À NEXPAY BANK
 
 💰 Saldo:
 R$ ${user.balance.toFixed(2)}`,
-            {
-                ...mainMenu()
+                    {
+                        ...mainMenu()
+                    }
+                );
+
+                console.log(
+                    '⚠️ START FALLBACK'
+                );
+
+            } catch (fallbackError) {
+
+                console.log(
+                    '❌ ERRO FALLBACK'
+                );
+
+                console.log(
+                    fallbackError
+                );
+
             }
-        );
 
-        console.log('✅ START ENVIADO');
+        }
 
-    } catch (error) {
-
-        console.log(
-            '❌ ERRO START'
-        );
-
-        console.log(error);
-
-    }
-
-});
+    });
 
     /*
     ===============================
