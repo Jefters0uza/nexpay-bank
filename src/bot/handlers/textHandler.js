@@ -14,9 +14,12 @@ const {
     saveDatabase
 } = require('../../database/users');
 
+const {
+    createPayment
+} = require('../../database/payments');
+
 module.exports = (
-    bot,
-    pendingPayments
+    bot
 ) => {
 
     /*
@@ -71,8 +74,29 @@ Digite entre R$ 20 e R$ 1500.`
 
                     }
 
+                    /*
+                    ==============================
+                    ANTI DUPLICAÇÃO
+                    ==============================
+                    */
+
+                    if (
+                        state.processing
+                    ) {
+
+                        return await ctx.reply(
+`⚠️ Aguarde o processamento do PIX atual.`
+                        );
+
+                    }
+
+                    userStates[
+                        ctx.from.id
+                    ].processing = true;
+
                     const webhookUrl =
-'https://tecofertamax.shop/webhook/pushinpay';
+                        process.env
+                            .WEBHOOK_URL;
 
                     const payment =
                         await createPixDeposit(
@@ -82,28 +106,51 @@ Digite entre R$ 20 e R$ 1500.`
 
                     if (!payment) {
 
+                        userStates[
+                            ctx.from.id
+                        ].processing = false;
+
                         return await ctx.reply(
 `❌ Erro ao gerar PIX.`
                         );
 
                     }
 
-                    pendingPayments[
-                        payment.id
-                    ] = {
+                    /*
+                    ==============================
+                    SAVE PAYMENT DATABASE
+                    ==============================
+                    */
 
-                        id: payment.id,
+                    createPayment(
+                        payment.id,
+                        {
 
-                        amount: value,
+                            id: payment.id,
 
-                        userId: ctx.from.id,
+                            amount: value,
 
-                        firstName:
-                            ctx.from.first_name,
+                            userId: ctx.from.id,
 
-                        status: 'pending'
+                            firstName:
+                                ctx.from.first_name,
 
-                    };
+                            status: 'pending',
+
+                            createdAt:
+                                new Date()
+                                    .toLocaleString(
+                                        'pt-BR'
+                                    )
+
+                        }
+                    );
+
+                    /*
+                    ==============================
+                    QR CODE
+                    ==============================
+                    */
 
                     const qrCodeImage =
                         await QRCode.toBuffer(
@@ -131,6 +178,7 @@ R$ ${value.toFixed(2)}
 ━━━━━━━━━━━━━━━
 
 🕒 Aguardando pagamento...`,
+
                             parse_mode:
                                 'HTML'
                         }
@@ -211,6 +259,32 @@ TELEFONE`
                     'waiting_pix_key'
                 ) {
 
+                    /*
+                    ==============================
+                    ANTI DUPLICAÇÃO SAQUE
+                    ==============================
+                    */
+
+                    if (
+                        state.processing
+                    ) {
+
+                        return await ctx.reply(
+`⚠️ Saque já está sendo processado.`
+                        );
+
+                    }
+
+                    userStates[
+                        ctx.from.id
+                    ].processing = true;
+
+                    /*
+                    ==============================
+                    SAVE PIX DATA
+                    ==============================
+                    */
+
                     user.pixData = {
 
                         name:
@@ -224,13 +298,39 @@ TELEFONE`
 
                     };
 
+                    /*
+                    ==============================
+                    DESCONTA SALDO
+                    ==============================
+                    */
+
+                    const withdrawAmount =
+                        user.balance;
+
+                    user.balance = 0;
+
+                    user.withdrawed +=
+                        withdrawAmount;
+
+                    /*
+                    ==============================
+                    HISTÓRICO
+                    ==============================
+                    */
+
                     addHistory(
                         ctx.from.id,
                         'SOLICITAÇÃO SAQUE',
-                        user.balance
+                        withdrawAmount
                     );
 
                     saveDatabase();
+
+                    /*
+                    ==============================
+                    USER MESSAGE
+                    ==============================
+                    */
 
                     await ctx.reply(
 `✅ <b>SAQUE SOLICITADO</b>
@@ -238,19 +338,27 @@ TELEFONE`
 ━━━━━━━━━━━━━━━
 
 💰 Valor:
-R$ ${user.balance.toFixed(2)}
+R$ ${withdrawAmount.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
 ⏳ Solicitação enviada
 para análise manual.`,
+
                         {
                             parse_mode:
                                 'HTML'
                         }
                     );
 
+                    /*
+                    ==============================
+                    ADMIN MESSAGE
+                    ==============================
+                    */
+
                     await bot.telegram.sendMessage(
+
                         process.env
                             .ADMIN_TELEGRAM_ID,
 
@@ -263,7 +371,7 @@ para análise manual.`,
 🆔 <code>${ctx.from.id}</code>
 
 💰 Valor:
-R$ ${user.balance.toFixed(2)}
+R$ ${withdrawAmount.toFixed(2)}
 
 ━━━━━━━━━━━━━━━
 
@@ -275,6 +383,7 @@ ${state.pixType}
 
 🔑 Chave:
 <code>${ctx.message.text}</code>`,
+
                         {
                             parse_mode:
                                 'HTML'

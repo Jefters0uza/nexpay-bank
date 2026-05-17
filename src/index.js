@@ -19,6 +19,11 @@ const {
     addHistory
 } = require('./database/users');
 
+const {
+    getPayment,
+    updatePayment
+} = require('./database/payments');
+
 const app = express();
 
 const bot =
@@ -80,22 +85,13 @@ bot.use(async (ctx, next) => {
 
 /*
 ==================================
-PAYMENTS
-==================================
-*/
-
-const pendingPayments = {};
-
-/*
-==================================
 COMMANDS
 ==================================
 */
 
 startCommand(
     bot,
-    usersDatabase,
-    pendingPayments
+    usersDatabase
 );
 
 /*
@@ -152,12 +148,22 @@ app.post(
 
             }
 
+            /*
+            ==============================
+            BUSCA PAYMENT DATABASE
+            ==============================
+            */
+
             const payment =
-                pendingPayments[
+                getPayment(
                     paymentData.id
-                ];
+                );
 
             if (!payment) {
+
+                console.log(
+                    '⚠️ PAYMENT NÃO ENCONTRADO'
+                );
 
                 return res
                     .status(200)
@@ -166,12 +172,22 @@ app.post(
                     });
 
             }
+
+            /*
+            ==============================
+            EVITA DUPLICAÇÃO
+            ==============================
+            */
 
             if (
                 payment.status ===
                 'paid'
             ) {
 
+                console.log(
+                    '⚠️ PAYMENT JÁ PAGO'
+                );
+
                 return res
                     .status(200)
                     .json({
@@ -180,12 +196,23 @@ app.post(
 
             }
 
+            /*
+            ==============================
+            PAYMENT CONFIRMADO
+            ==============================
+            */
+
             if (
                 paymentData.status ===
                 'paid'
             ) {
 
-                payment.status = 'paid';
+                updatePayment(
+                    paymentData.id,
+                    {
+                        status: 'paid'
+                    }
+                );
 
                 const user =
                     getUser(
@@ -204,6 +231,16 @@ app.post(
                     payment.amount
                 );
 
+                console.log(
+                    '✅ DEPÓSITO CONFIRMADO'
+                );
+
+                /*
+                ==========================
+                USER MESSAGE
+                ==========================
+                */
+
                 try {
 
                     await bot.telegram.sendMessage(
@@ -212,8 +249,15 @@ app.post(
 
 `✅ <b>DEPÓSITO CONFIRMADO</b>
 
+━━━━━━━━━━━━━━━
+
 💰 Valor:
-R$ ${payment.amount.toFixed(2)}`,
+R$ ${payment.amount.toFixed(2)}
+
+━━━━━━━━━━━━━━━
+
+⚡ O valor já está
+disponível na carteira.`,
 
                         {
                             parse_mode:
@@ -223,6 +267,58 @@ R$ ${payment.amount.toFixed(2)}`,
                     );
 
                 } catch (error) {
+
+                    console.log(
+                        '❌ ERRO MSG USER'
+                    );
+
+                    console.log(error);
+
+                }
+
+                /*
+                ==========================
+                ADMIN MESSAGE
+                ==========================
+                */
+
+                try {
+
+                    await bot.telegram.sendMessage(
+
+                        process.env
+                            .ADMIN_TELEGRAM_ID,
+
+`💸 <b>NOVO DEPÓSITO</b>
+
+━━━━━━━━━━━━━━━
+
+👤 Usuário:
+${payment.firstName}
+
+🆔 ID:
+<code>${payment.userId}</code>
+
+💰 Valor:
+R$ ${payment.amount.toFixed(2)}
+
+━━━━━━━━━━━━━━━
+
+✅ STATUS:
+PAGO`,
+
+                        {
+                            parse_mode:
+                                'HTML'
+                        }
+
+                    );
+
+                } catch (error) {
+
+                    console.log(
+                        '❌ ERRO MSG ADMIN'
+                    );
 
                     console.log(error);
 
